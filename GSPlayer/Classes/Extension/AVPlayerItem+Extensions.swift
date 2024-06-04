@@ -11,24 +11,24 @@ import AVFoundation
 public extension AVPlayerItem {
     
     var bufferProgress: Double {
-        return currentBufferDuration / totalDuration
+        return currentBufferDuration / duration
     }
     
-    var currentBufferDuration: Double {
+    var currentBufferDuration: TimeInterval {
         guard let range = loadedTimeRanges.first else { return 0 }
-        return Double(CMTimeGetSeconds(CMTimeRangeGetEnd(range.timeRangeValue)))
+        return CMTimeGetSeconds(CMTimeRangeGetEnd(range.timeRangeValue))
     }
     
-    var currentDuration: Double {
-        return Double(CMTimeGetSeconds(currentTime()))
+    var currentDuration: TimeInterval {
+        return CMTimeGetSeconds(currentTime())
     }
     
     var playProgress: Double {
-        return currentDuration / totalDuration
+        return currentDuration / duration
     }
     
-    var totalDuration: Double {
-        return Double(CMTimeGetSeconds(asset.duration))
+    var duration: TimeInterval {
+        return CMTimeGetSeconds(asset.duration)
     }
     
 }

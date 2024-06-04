@@ -24,9 +24,11 @@ open class VideoPlayerView: UIView {
         
         /// Pause, will be called repeatedly when the buffer progress changes
         case paused(playProgress: Double, bufferProgress: Double)
-        
+
+        case playedToEnd
+
         /// An error occurred and cannot continue playing
-        case error(NSError)
+        case error(AVError)
     }
     
     public enum PausedReason: Int {
@@ -38,7 +40,7 @@ open class VideoPlayerView: UIView {
         case userInteraction
         
         /// Waiting for resource completion buffering
-        case waitingKeepUp
+        case waitingToKeepUp
     }
     
     /// An object that manages a player's visual output.
@@ -59,7 +61,7 @@ open class VideoPlayerView: UIView {
     }
     
     /// The reason the video was paused.
-    public private(set) var pausedReason: PausedReason = .waitingKeepUp
+    public private(set) var pausedReason: PausedReason = .waitingToKeepUp
     
     /// Number of replays.
     public private(set) var replayCount: Int = 0
@@ -86,9 +88,9 @@ open class VideoPlayerView: UIView {
     open var speedRate: Float = 1.0
 
     /// Video volume, only for this instance.
-    open var volume: Double {
-        get { return player?.volume.double ?? 0 }
-        set { player?.volume = newValue.float }
+    open var volume: Float {
+        get { return player?.volume ?? 0 }
+        set { player?.volume = newValue }
     }
     
     /// Played progress, value range 0-1.
@@ -97,7 +99,7 @@ open class VideoPlayerView: UIView {
     }
     
     /// Played length in seconds.
-    public var currentDuration: Double {
+    public var currentDuration: TimeInterval {
         return isLoaded ? player?.currentDuration ?? 0 : 0
     }
     
@@ -107,26 +109,33 @@ open class VideoPlayerView: UIView {
     }
     
     /// Buffered length in seconds.
-    public var currentBufferDuration: Double {
+    public var currentBufferDuration: TimeInterval {
         return isLoaded ? player?.currentBufferDuration ?? 0 : 0
     }
     
     /// Total video duration in seconds.
-    public var totalDuration: Double {
+    public var totalDuration: TimeInterval {
         return isLoaded ? player?.totalDuration ?? 0 : 0
     }
     
     /// The total watch time of this video, in seconds.
-    public var watchDuration: Double {
-        return isLoaded ? currentDuration + totalDuration * Double(replayCount) : 0
+    public var watchDuration: TimeInterval {
+        return isLoaded ? currentDuration + totalDuration * TimeInterval(replayCount) : 0
     }
     
     private var isLoaded = false
     private var isReplay = false
     
     private var playerBufferingObservation: NSKeyValueObservation?
-    private var playerItemKeepUpObservation: NSKeyValueObservation?
     private var playerItemStatusObservation: NSKeyValueObservation?
+    private var playerItemKeepUpObservation: NSKeyValueObservation?
+    private var playerItemPlayToEndObservation: NSObjectProtocol? {
+        willSet {
+            if let playerItemPlayToEndObservation {
+                NotificationCenter.default.removeObserver(playerItemPlayToEndObservation)
+            }
+        }
+    }
     private var playerLayerReadyForDisplayObservation: NSKeyValueObservation?
     private var playerTimeControlStatusObservation: NSKeyValueObservation?
     
@@ -147,8 +156,8 @@ open class VideoPlayerView: UIView {
         configureInit()
     }
     
-    required public init?(coder aDecoder: NSCoder) {
-        super.init(coder: aDecoder)
+    required public init?(coder: NSCoder) {
+        super.init(coder: coder)
         configureInit()
     }
     
@@ -174,7 +183,7 @@ open class VideoPlayerView: UIView {
     /// - Parameter url: Can be a local or remote URL
     open func play(for url: URL) {
         guard playerURL != url else {
-            pausedReason = .waitingKeepUp
+            pausedReason = .waitingToKeepUp
             player?.playImmediately(atRate: speedRate)
             return
         }
@@ -193,7 +202,7 @@ open class VideoPlayerView: UIView {
         
         self.player = player
         self.playerURL = url
-        self.pausedReason = .waitingKeepUp
+        self.pausedReason = .waitingToKeepUp
         self.replayCount = 0
         self.isReplay = false
         self.isLoaded = false
@@ -223,7 +232,7 @@ open class VideoPlayerView: UIView {
     
     /// Continue playing video.
     open func resume() {
-        pausedReason = .waitingKeepUp
+        pausedReason = .waitingToKeepUp
         player?.playImmediately(atRate: speedRate)
     }
     
@@ -244,7 +253,7 @@ open class VideoPlayerView: UIView {
     
     /// Requests invocation of a block when specified times are traversed during normal playback.
     @discardableResult
-    @nonobjc open func addBoundaryTimeObserver(forTimes times: [CMTime], queue: DispatchQueue? = nil, using: @escaping () -> Void) -> Any? {
+    open func addBoundaryTimeObserver(forTimes times: [CMTime], queue: DispatchQueue? = nil, using: @escaping () -> Void) -> Any? {
         return player?.addBoundaryTimeObserver(forTimes: times.map { NSValue(time: $0) }, queue: queue, using: using)
     }
     
@@ -268,9 +277,7 @@ open class VideoPlayerView: UIView {
     open func playAudioTrack(index: Int) {
         guard
             let asset = player?.currentItem?.asset,
-            let group = asset.mediaSelectionGroup(
-                forMediaCharacteristic: AVMediaCharacteristic.audible
-            ),
+            let group = asset.mediaSelectionGroup(forMediaCharacteristic: .audible),
             group.options.count > index
         else {
             return
@@ -296,15 +303,6 @@ private extension VideoPlayerView {
     
     func configureInit() {
         
-        isHidden = true
-        
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(playerItemDidReachEnd(notification:)),
-            name: .AVPlayerItemDidPlayToEndTime,
-            object: nil
-        )
-        
         layer.addSublayer(playerLayer)
     }
     
@@ -314,42 +312,42 @@ private extension VideoPlayerView {
             return
         }
         
-        switch state {
-        case .playing, .paused: isHidden = false
-        default:                isHidden = true
-        }
-        
         stateDidChanged?(state)
     }
     
     func observe(player: AVPlayer?) {
         
-        guard let player = player else {
+        guard let player else {
             playerLayerReadyForDisplayObservation = nil
             playerTimeControlStatusObservation = nil
             return
         }
         
         playerLayerReadyForDisplayObservation = playerLayer.observe(\.isReadyForDisplay) { [unowned self, unowned player] playerLayer, _ in
-            if playerLayer.isReadyForDisplay, player.rate > 0 {
-                self.isLoaded = true
-                self.state = .playing
+            if playerLayer.isReadyForDisplay && player.rate > 0 {
+                isLoaded = true
+                state = .playing
             }
         }
         
         playerTimeControlStatusObservation = player.observe(\.timeControlStatus) { [unowned self] player, _ in
             switch player.timeControlStatus {
             case .paused:
-                guard !self.isReplay else { break }
-                self.state = .paused(playProgress: self.playProgress, bufferProgress: self.bufferProgress)
-                if self.pausedReason == .waitingKeepUp { player.playImmediately(atRate: speedRate) }
+                guard state != .playedToEnd && !isReplay else { break }
+                state = .paused(playProgress: playProgress, bufferProgress: bufferProgress)
+                if pausedReason == .waitingToKeepUp {
+                    player.playImmediately(atRate: speedRate)
+                }
             case .waitingToPlayAtSpecifiedRate:
                 break
             case .playing:
-                if self.playerLayer.isReadyForDisplay, player.rate > 0 {
-                    self.isLoaded = true
-                    if self.playProgress == 0, self.isReplay { self.isReplay = false; break }
-                    self.state = .playing
+                if playerLayer.isReadyForDisplay && player.rate > 0 {
+                    isLoaded = true
+                    if playProgress == 0 && isReplay {
+                        isReplay = false
+                        break
+                    }
+                    state = .playing
                 }
             @unknown default:
                 break
@@ -359,10 +357,11 @@ private extension VideoPlayerView {
     
     func observe(playerItem: AVPlayerItem?) {
         
-        guard let playerItem = playerItem else {
+        guard let playerItem else {
             playerBufferingObservation = nil
             playerItemStatusObservation = nil
             playerItemKeepUpObservation = nil
+            playerItemPlayToEndObservation = nil
             return
         }
         
@@ -379,28 +378,34 @@ private extension VideoPlayerView {
         }
         
         playerItemStatusObservation = playerItem.observe(\.status) { [unowned self] item, _ in
-            if item.status == .failed, let error = item.error as NSError? {
-                self.state = .error(error)
+            if item.status == .failed, let error = item.error {
+                self.state = .error(AVError(_nsError: error as NSError))
             }
         }
         
         playerItemKeepUpObservation = playerItem.observe(\.isPlaybackLikelyToKeepUp) { [unowned self] item, _ in
             if item.isPlaybackLikelyToKeepUp {
-                if self.player?.rate == 0, self.pausedReason == .waitingKeepUp {
+                if self.player?.rate == 0 && self.pausedReason == .waitingToKeepUp {
                     self.player?.playImmediately(atRate: speedRate)
                 }
             }
         }
+
+        playerItemPlayToEndObservation = NotificationCenter.default.addObserver(forName: AVPlayerItem.didPlayToEndTimeNotification, object: playerItem, queue: .main) { [unowned self] notification in
+            playerItemDidReachEnd(notification)
+        }
     }
     
-    @objc func playerItemDidReachEnd(notification: Notification) {
-        guard (notification.object as? AVPlayerItem) == player?.currentItem else {
+    @objc func playerItemDidReachEnd(_ notification: Notification) {
+        guard notification.object as? AVPlayerItem == player?.currentItem else {
             return
         }
-        
-        playToEndTime?()
-        
-        guard isAutoReplay, pausedReason == .waitingKeepUp else {
+
+        guard isAutoReplay && pausedReason == .waitingToKeepUp else {
+            if state != .playedToEnd {
+                state = .playedToEnd
+                playToEndTime?()
+            }
             return
         }
         
@@ -409,7 +414,7 @@ private extension VideoPlayerView {
         replay?()
         replayCount += 1
         
-        player?.seek(to: CMTime.zero)
+        player?.seek(to: .zero)
         player?.playImmediately(atRate: speedRate)
     }
     
@@ -425,9 +430,11 @@ extension VideoPlayerView.State: Equatable {
             return true
         case (.playing, .playing):
             return true
-        case let (.paused(p1, b1), .paused(p2, b2)):
-            return (p1 == p2) && (b1 == b2)
-        case let (.error(e1), .error(e2)):
+        case (.paused(let p1, let b1), .paused(let p2, let b2)):
+            return p1 == p2 && b1 == b2
+        case (.playedToEnd, .playedToEnd):
+            return true
+        case (.error(let e1), .error(let e2)):
             return e1 == e2
         default:
             return false

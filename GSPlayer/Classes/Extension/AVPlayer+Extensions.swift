@@ -19,11 +19,11 @@ public extension AVPlayer {
         return currentItem?.bufferProgress ?? -1
     }
     
-    var currentBufferDuration: Double {
+    var currentBufferDuration: TimeInterval {
         return currentItem?.currentBufferDuration ?? -1
     }
     
-    var currentDuration: Double {
+    var currentDuration: TimeInterval {
         return currentItem?.currentDuration ?? -1
     }
     
@@ -54,8 +54,8 @@ public extension AVPlayer {
         return currentItem?.playProgress ?? -1
     }
     
-    var totalDuration: Double {
-        return currentItem?.totalDuration ?? -1
+    var totalDuration: TimeInterval {
+        return currentItem?.duration ?? -1
     }
     
     convenience init(asset: AVURLAsset) {
