@@ -79,15 +79,15 @@ extension VideoDownloaderHandler: VideoDownloaderSessionDelegateHandlerDelegate 
     
     func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
         let trust = challenge.protectionSpace.serverTrust
-        completionHandler(.useCredential, trust != nil ? URLCredential(trust: trust!) : nil)
+        completionHandler(.useCredential, trust.map(URLCredential.init(trust:)))
     }
     
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse, completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
         #if !os(macOS)
-        guard
-            let mimeType = response.mimeType,
-            mimeType.contains("video/")
-            else { completionHandler(.cancel); return }
+        guard let mimeType = response.mimeType, mimeType.hasPrefix("video") else {
+            completionHandler(.cancel)
+            return
+        }
         #endif
         
         delegate?.handler(self, didReceive: response)
@@ -114,7 +114,7 @@ extension VideoDownloaderHandler: VideoDownloaderSessionDelegateHandlerDelegate 
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         cacheHandler.save()
         
-        if let error = error {
+        if let error {
             delegate?.handler(self, didFinish: error)
             notifyFinished(error: error)
         } else {

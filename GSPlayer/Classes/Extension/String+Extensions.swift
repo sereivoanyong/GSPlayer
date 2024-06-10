@@ -18,10 +18,6 @@ extension String {
     var deletingPathExtension: String {
         return (self as NSString).deletingPathExtension
     }
-  
-    var int: Int? {
-        return Int(self)
-    }
     
     var md5: String {
         guard let data = data(using: .utf8) else { return self }
@@ -46,4 +42,11 @@ extension String {
         return (self as NSString).appendingPathExtension(str)
     }
     
+}
+
+extension StringProtocol {
+
+    var int: Int? {
+        return Int(self)
+    }
 }

@@ -10,13 +10,13 @@ import Foundation
 
 struct VideoInfo: Codable {
     
+    var contentType: String?
     var contentLength: Int
-    var contentType: String
     var isByteRangeAccessSupported: Bool
     
-    init(contentLength: Int, contentType: String, isByteRangeAccessSupported: Bool) {
-        self.contentLength = contentLength
+    init(contentType: String?,contentLength: Int, isByteRangeAccessSupported: Bool) {
         self.contentType = contentType
+        self.contentLength = contentLength
         self.isByteRangeAccessSupported = isByteRangeAccessSupported
     }
     

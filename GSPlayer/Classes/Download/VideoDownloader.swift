@@ -65,20 +65,15 @@ extension VideoDownloader: VideoDownloaderHandlerDelegate {
         
         if info == nil, let httpResponse = response as? HTTPURLResponse {
             
-            let contentLength = String(httpResponse
-                .value(forHeaderKey: "Content-Range")?
-                .split(separator: "/").last ?? "0").int ?? 0
-            
-            let contentType = httpResponse
-                .value(forHeaderKey: "Content-Type") ?? ""
-            
-            let isByteRangeAccessSupported = httpResponse
-                .value(forHeaderKey: "Accept-Ranges")?
-                .contains("bytes") ?? false
+            let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type")
+
+            let contentLength = httpResponse.value(forHTTPHeaderField: "Content-Range")?.split(separator: "/").last?.int ?? 0
+
+            let isByteRangeAccessSupported = httpResponse.value(forHTTPHeaderField: "Accept-Ranges")?.contains("bytes") ?? false
             
             cacheHandler.set(info: VideoInfo(
-                contentLength: contentLength,
                 contentType: contentType,
+                contentLength: contentLength,
                 isByteRangeAccessSupported: isByteRangeAccessSupported
             ))
         }
@@ -92,16 +87,6 @@ extension VideoDownloader: VideoDownloaderHandlerDelegate {
     
     func handler(_ handler: VideoDownloaderHandler, didFinish error: Error?) {
         delegate?.downloader(self, didFinished: error)
-    }
-    
-}
-
-private extension HTTPURLResponse {
-    
-    func value(forHeaderKey key: String) -> String? {
-        return allHeaderFields
-            .first { $0.key.description.caseInsensitiveCompare(key) == .orderedSame }?
-            .value as? String
     }
     
 }

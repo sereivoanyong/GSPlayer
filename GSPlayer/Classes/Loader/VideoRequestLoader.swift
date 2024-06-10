@@ -92,15 +92,11 @@ extension VideoRequestLoader: VideoDownloaderDelegate {
 private extension VideoRequestLoader {
     
     func fulfillContentInfomation() {
-        guard
-            let info = downloader.info,
-            request.contentInformationRequest != nil else {
-            return
-        }
-        
-        request.contentInformationRequest?.contentType = info.contentType
-        request.contentInformationRequest?.contentLength = Int64(info.contentLength)
-        request.contentInformationRequest?.isByteRangeAccessSupported = info.isByteRangeAccessSupported
+        guard let info = downloader.info, let contentInformationRequest = request.contentInformationRequest else { return }
+
+        contentInformationRequest.contentType = info.contentType
+        contentInformationRequest.contentLength = Int64(info.contentLength)
+        contentInformationRequest.isByteRangeAccessSupported = info.isByteRangeAccessSupported
     }
     
 }
