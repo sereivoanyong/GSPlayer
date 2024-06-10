@@ -18,14 +18,14 @@ public struct VideoCacheConfiguration: Codable {
             let data = FileManager.default.contents(atPath: filePath)
             else { return VideoCacheConfiguration(filePath: filePath) }
         
-        var configuration = try JSONDecoder().decode(VideoCacheConfiguration.self, from: data)
+        var configuration = try PropertyListDecoder().decode(VideoCacheConfiguration.self, from: data)
         configuration.filePath = filePath
         
         return configuration
     }
     
     static func configurationFilePath(for filePath: String) -> String {
-        return filePath.appendingPathExtension("cfg")!
+        return filePath.deletingPathExtension.appendingPathExtension("plist")!
     }
     
     var info: VideoInfo?
@@ -114,7 +114,7 @@ public struct VideoCacheConfiguration: Codable {
             
             if !FileManager.default.createFile(
                 atPath: filePath,
-                contents: try JSONEncoder().encode(self),
+                contents: try PropertyListEncoder().encode(self),
                 attributes: nil
             ) {
                 throw NSError(

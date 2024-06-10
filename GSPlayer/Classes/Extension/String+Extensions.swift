@@ -14,7 +14,11 @@ extension String {
     var deletingLastPathComponent: String {
         return (self as NSString).deletingLastPathComponent
     }
-    
+
+    var deletingPathExtension: String {
+        return (self as NSString).deletingPathExtension
+    }
+  
     var int: Int? {
         return Int(self)
     }
